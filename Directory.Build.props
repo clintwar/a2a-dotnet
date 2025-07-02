@@ -1,0 +1,23 @@
+<Project>
+	<PropertyGroup>
+		<Version>0.1.0-preview.1</Version>
+		<Authors>Community Contributors</Authors>
+		<PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/a2aproject/a2a-dotnet</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/a2aproject/a2a-dotnet</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>Agent2Agent;a2a;agent;ai;llm</PackageTags>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+	</PropertyGroup>
+
+	<PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<LangVersion>12.0</LangVersion>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+</Project>
