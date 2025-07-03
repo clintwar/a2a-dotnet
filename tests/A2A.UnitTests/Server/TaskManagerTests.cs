@@ -1,4 +1,4 @@
-﻿namespace A2A.UnitTests;
+﻿namespace A2A.UnitTests.Server;
 
 public class TaskManagerTests
 {
@@ -329,7 +329,110 @@ public class TaskManagerTests
             eventCount++;
         }
         Assert.Equal(2, eventCount);
+    }
 
+    [Fact]
+    public async Task SetPushNotificationAsync_SetsAndReturnsConfig()
+    {
+        // Arrange
+        var sut = new TaskManager();
+        var config = new TaskPushNotificationConfig
+        {
+            Id = "task-push-1",
+            PushNotificationConfig = new PushNotificationConfig { Url = "http://callback" }
+        };
 
+        // Act
+        var result = await sut.SetPushNotificationAsync(config);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("task-push-1", result.Id);
+        Assert.Equal("http://callback", result.PushNotificationConfig.Url);
+    }
+
+    [Fact]
+    public async Task SetPushNotificationAsync_ThrowsOnNullConfig()
+    {
+        // Arrange
+        var sut = new TaskManager();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() => sut.SetPushNotificationAsync(null));
+    }
+
+    [Fact]
+    public async Task GetPushNotificationAsync_ReturnsConfig()
+    {
+        // Arrange
+        var sut = new TaskManager();
+        var config = new TaskPushNotificationConfig
+        {
+            Id = "task-push-2",
+            PushNotificationConfig = new PushNotificationConfig { Url = "http://callback2" }
+        };
+        await sut.SetPushNotificationAsync(config);
+
+        // Act
+        var result = await sut.GetPushNotificationAsync(new TaskIdParams { Id = "task-push-2" });
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("task-push-2", result.Id);
+        Assert.Equal("http://callback2", result.PushNotificationConfig.Url);
+    }
+
+    [Fact]
+    public async Task GetPushNotificationAsync_ThrowsOnNullParams()
+    {
+        // Arrange
+        var sut = new TaskManager();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(() => sut.GetPushNotificationAsync(null));
+    }
+
+    [Fact]
+    public async Task ResubscribeAsync_ReturnsEnumerator_WhenTaskExists()
+    {
+        // Arrange
+        var sut = new TaskManager();
+        var task = await sut.CreateTaskAsync();
+
+        var sendParams = new MessageSendParams
+        {
+            Message = new Message
+            {
+                TaskId = task.Id,
+                Parts = [ new TextPart { Text = "init" } ]
+            }
+        };
+
+        // Register the enumerator for the taskId
+        var enumerator = await sut.SendMessageStreamAsync(sendParams);
+        
+        // Now, ResubscribeAsync should return the same enumerator instance for the taskId
+        var result = sut.ResubscribeAsync(new TaskIdParams { Id = task.Id });
+        Assert.Same(enumerator, result);
+    }
+
+    [Fact]
+    public void ResubscribeAsync_Throws_WhenTaskDoesNotExist()
+    {
+        // Arrange
+        var sut = new TaskManager();
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => sut.ResubscribeAsync(new TaskIdParams { Id = "notfound" }));
+    }
+
+    [Fact]
+    public void ResubscribeAsync_ThrowsOnNullParams()
+    {
+        // Arrange
+        var sut = new TaskManager();
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => sut.ResubscribeAsync(null));
     }
 }

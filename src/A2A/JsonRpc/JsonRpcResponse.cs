@@ -16,6 +16,9 @@ public class JsonRpcResponse
     [JsonPropertyName("result")]
     public JsonNode? Result { get; set; }
 
+    [JsonPropertyName("error")]
+    public JsonRpcError? Error { get; set; }
+
     public static JsonRpcResponse CreateJsonRpcResponse<T>(string requestId, T result, JsonTypeInfo? resultTypeInfo = null)
     {
         resultTypeInfo ??= (JsonTypeInfo<T>)A2AJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
@@ -28,12 +31,6 @@ public class JsonRpcResponse
     }
 }
 
-public class JsonRpcErrorResponse : JsonRpcResponse
-{
-    [JsonPropertyName("error")]
-    public JsonRpcError? Error { get; set; }
-
-}
 // public class JsonRpcResponse<T> : JsonRpcResponse
 // {
 //     public static JsonRpcResponse<T> CreateJsonRpcResponse(string requestId, T result)

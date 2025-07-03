@@ -109,6 +109,7 @@ public static class A2AJsonRpcProcessor
 
         return new JsonRpcResponseResult(response);
     }
+
     internal static async Task<IResult> StreamResponse(TaskManager taskManager, string requestId, string method, JsonElement? parameters)
     {
         using var activity = ActivitySource.StartActivity("StreamResponse", ActivityKind.Server);
@@ -169,7 +170,7 @@ public class JsonRpcResponseResult : IResult
     public async Task ExecuteAsync(HttpContext httpContext)
     {
         httpContext.Response.ContentType = "application/json";
-        httpContext.Response.StatusCode = jsonRpcResponse is JsonRpcErrorResponse ?
+        httpContext.Response.StatusCode = jsonRpcResponse.Error is not null ?
             StatusCodes.Status400BadRequest :
             StatusCodes.Status200OK;
 

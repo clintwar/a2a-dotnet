@@ -45,6 +45,7 @@ public static partial class A2AJsonUtilities
     [JsonSerializable(typeof(MessageSendParams))]
     [JsonSerializable(typeof(TaskIdParams))]
     [JsonSerializable(typeof(TaskPushNotificationConfig))]
+    [JsonSerializable(typeof(TaskQueryParams))]
 
     [ExcludeFromCodeCoverage]
     internal sealed partial class JsonContext : JsonSerializerContext;
