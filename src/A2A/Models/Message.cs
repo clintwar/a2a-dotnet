@@ -6,7 +6,7 @@ namespace A2A;
 /// <summary>
 /// Message sender's role.
 /// </summary>
-[JsonConverter(typeof(MessageRoleConverter))]
+[JsonConverter(typeof(KebabCaseLowerJsonStringEnumConverter<MessageRole>))]
 public enum MessageRole
 {
     /// <summary>
