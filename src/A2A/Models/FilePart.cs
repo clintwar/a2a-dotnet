@@ -11,5 +11,6 @@ public class FilePart : Part
     /// File content either as url or bytes.
     /// </summary>
     [JsonPropertyName("file")]
-    public FileWithBytes File { get; set; } = new FileWithBytes();
+    [JsonRequired]
+    public FileContent File { get; set; } = new FileWithBytes();
 }
