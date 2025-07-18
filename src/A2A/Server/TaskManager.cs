@@ -50,7 +50,7 @@ public sealed class TaskManager : ITaskManager
     }
 
     /// <inheritdoc />
-    public async Task<AgentTask> CreateTaskAsync(string? contextId = null)
+    public async Task<AgentTask> CreateTaskAsync(string? contextId = null, string? taskId = null)
     {
         contextId ??= Guid.NewGuid().ToString();
 
@@ -60,7 +60,7 @@ public sealed class TaskManager : ITaskManager
         // Create a new task with a unique ID and context ID
         var task = new AgentTask
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = taskId ?? Guid.NewGuid().ToString(),
             ContextId = contextId,
             Status = new AgentTaskStatus
             {
@@ -100,7 +100,7 @@ public sealed class TaskManager : ITaskManager
         }
 
         activity?.SetTag("task.found", false);
-        throw new ArgumentException("Task not found or invalid TaskIdParams.");
+        throw new A2AException("Task not found or invalid TaskIdParams.", A2AErrorCode.TaskNotFound);
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public sealed class TaskManager : ITaskManager
     /// </remarks>
     /// <param name="taskIdParams">Parameters containing the task ID to retrieve.</param>
     /// <returns>The task if found in the store, null otherwise.</returns>
-    public async Task<AgentTask?> GetTaskAsync(TaskIdParams taskIdParams)
+    public async Task<AgentTask?> GetTaskAsync(TaskQueryParams taskIdParams)
     {
         if (taskIdParams is null)
         {
@@ -123,6 +123,9 @@ public sealed class TaskManager : ITaskManager
 
         var task = await _taskStore.GetTaskAsync(taskIdParams.Id);
         activity?.SetTag("task.found", task != null);
+
+        task?.TrimHistory(taskIdParams.HistoryLength);
+
         return task;
     }
 
@@ -153,7 +156,6 @@ public sealed class TaskManager : ITaskManager
             if (task == null)
             {
                 activity?.SetTag("task.found", false);
-                throw new ArgumentException("Task not found or invalid TaskId.");
             }
         }
 
@@ -173,7 +175,7 @@ public sealed class TaskManager : ITaskManager
             else
             {
                 // If no task is found and no OnMessageReceived handler is set, create a new task
-                task = await CreateTaskAsync(messageSendParams.Message.ContextId);
+                task = await CreateTaskAsync(messageSendParams.Message.ContextId, messageSendParams.Message.TaskId);
                 task.History ??= [];
                 task.History.Add(messageSendParams.Message);
                 using var createActivity = ActivitySource.StartActivity("OnTaskCreated", ActivityKind.Server);
@@ -192,7 +194,7 @@ public sealed class TaskManager : ITaskManager
             task.History ??= [];
             task.History.Add(messageSendParams.Message);
 
-            TrimHistory(messageSendParams, task);
+            task.TrimHistory(messageSendParams.Configuration?.HistoryLength);
 
             await _taskStore.SetTaskAsync(task);
             using var createActivity = ActivitySource.StartActivity("OnTaskUpdated", ActivityKind.Server);
@@ -200,15 +202,6 @@ public sealed class TaskManager : ITaskManager
         }
 
         return task;
-    }
-
-    private static void TrimHistory(MessageSendParams messageSendParams, AgentTask task)
-    {
-        // Trim history if historyLength is specified
-        if (messageSendParams.Configuration?.HistoryLength is { } historyLength && task.History?.Count > historyLength)
-        {
-            task.History = [.. task.History.Skip(Math.Max(0, task.History.Count - historyLength))];
-        }
     }
 
     /// <summary>
@@ -238,7 +231,6 @@ public sealed class TaskManager : ITaskManager
             if (agentTask == null)
             {
                 activity?.SetTag("task.found", false);
-                throw new ArgumentException("Task not found or invalid TaskId.");
             }
         }
 
@@ -284,7 +276,7 @@ public sealed class TaskManager : ITaskManager
             agentTask.History ??= [];
             agentTask.History.Add(messageSendParams.Message);
 
-            TrimHistory(messageSendParams, agentTask);
+            agentTask.TrimHistory(messageSendParams.Configuration?.HistoryLength);
 
             await _taskStore.SetTaskAsync(agentTask);
             enumerator = new TaskUpdateEventEnumerator();
