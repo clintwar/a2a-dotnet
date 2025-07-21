@@ -27,8 +27,9 @@ public static class A2AJsonRpcProcessor
     /// </remarks>
     /// <param name="taskManager">The task manager instance for handling A2A operations.</param>
     /// <param name="request">Http request containing the JSON-RPC request body.</param>
+    /// <param name="cancellationToken">The cancellation token to cancel the operation if needed.</param>
     /// <returns>An HTTP result containing either a single JSON-RPC response or a streaming SSE response.</returns>
-    internal static async Task<IResult> ProcessRequest(ITaskManager taskManager, HttpRequest request)
+    internal static async Task<IResult> ProcessRequest(ITaskManager taskManager, HttpRequest request, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("HandleA2ARequest", ActivityKind.Server);
 
@@ -36,7 +37,7 @@ public static class A2AJsonRpcProcessor
 
         try
         {
-            rpcRequest = (JsonRpcRequest?)await JsonSerializer.DeserializeAsync(request.Body, A2AJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcRequest)));
+            rpcRequest = (JsonRpcRequest?)await JsonSerializer.DeserializeAsync(request.Body, A2AJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcRequest)), cancellationToken);
 
             activity?.AddTag("request.id", rpcRequest!.Id);
             activity?.AddTag("request.method", rpcRequest!.Method);
@@ -44,10 +45,10 @@ public static class A2AJsonRpcProcessor
             // Dispatch based on return type
             if (A2AMethods.IsStreamingMethod(rpcRequest!.Method))
             {
-                return await StreamResponse(taskManager, rpcRequest.Id, rpcRequest.Method, rpcRequest.Params);
+                return await StreamResponse(taskManager, rpcRequest.Id, rpcRequest.Method, rpcRequest.Params, cancellationToken);
             }
 
-            return await SingleResponse(taskManager, rpcRequest.Id, rpcRequest.Method, rpcRequest.Params);
+            return await SingleResponse(taskManager, rpcRequest.Id, rpcRequest.Method, rpcRequest.Params, cancellationToken);
         }
         catch (A2AException ex)
         {
@@ -72,8 +73,9 @@ public static class A2AJsonRpcProcessor
     /// <param name="requestId">The JSON-RPC request ID for response correlation.</param>
     /// <param name="method">The JSON-RPC method name to execute.</param>
     /// <param name="parameters">The JSON parameters for the method call.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <returns>A JSON-RPC response result containing the operation result or error.</returns>
-    internal static async Task<JsonRpcResponseResult> SingleResponse(ITaskManager taskManager, string? requestId, string method, JsonElement? parameters)
+    internal static async Task<JsonRpcResponseResult> SingleResponse(ITaskManager taskManager, string? requestId, string method, JsonElement? parameters, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity($"SingleResponse/{method}", ActivityKind.Server);
         activity?.SetTag("request.id", requestId);
@@ -91,29 +93,29 @@ public static class A2AJsonRpcProcessor
         {
             case A2AMethods.MessageSend:
                 var taskSendParams = DeserializeOrThrow<MessageSendParams>(parameters.Value);
-                var a2aResponse = await taskManager.SendMessageAsync(taskSendParams);
+                var a2aResponse = await taskManager.SendMessageAsync(taskSendParams, cancellationToken);
                 response = JsonRpcResponse.CreateJsonRpcResponse(requestId, a2aResponse);
                 break;
             case A2AMethods.TaskGet:
                 var taskIdParams = DeserializeOrThrow<TaskQueryParams>(parameters.Value);
-                var getAgentTask = await taskManager.GetTaskAsync(taskIdParams);
+                var getAgentTask = await taskManager.GetTaskAsync(taskIdParams, cancellationToken);
                 response = getAgentTask is null
                     ? JsonRpcResponse.TaskNotFoundResponse(requestId)
                     : JsonRpcResponse.CreateJsonRpcResponse(requestId, getAgentTask);
                 break;
             case A2AMethods.TaskCancel:
                 var taskIdParamsCancel = DeserializeOrThrow<TaskIdParams>(parameters.Value);
-                var cancelledTask = await taskManager.CancelTaskAsync(taskIdParamsCancel);
+                var cancelledTask = await taskManager.CancelTaskAsync(taskIdParamsCancel, cancellationToken);
                 response = JsonRpcResponse.CreateJsonRpcResponse(requestId, cancelledTask);
                 break;
             case A2AMethods.TaskPushNotificationConfigSet:
                 var taskPushNotificationConfig = DeserializeOrThrow<TaskPushNotificationConfig>(parameters.Value);
-                var setConfig = await taskManager.SetPushNotificationAsync(taskPushNotificationConfig);
+                var setConfig = await taskManager.SetPushNotificationAsync(taskPushNotificationConfig, cancellationToken);
                 response = JsonRpcResponse.CreateJsonRpcResponse(requestId, setConfig);
                 break;
             case A2AMethods.TaskPushNotificationConfigGet:
                 var notificationConfigParams = DeserializeOrThrow<GetTaskPushNotificationConfigParams>(parameters.Value);
-                var getConfig = await taskManager.GetPushNotificationAsync(notificationConfigParams);
+                var getConfig = await taskManager.GetPushNotificationAsync(notificationConfigParams, cancellationToken);
                 response = JsonRpcResponse.CreateJsonRpcResponse(requestId, getConfig);
                 break;
             default:
@@ -150,8 +152,9 @@ public static class A2AJsonRpcProcessor
     /// <param name="requestId">The JSON-RPC request ID for response correlation.</param>
     /// <param name="method">The JSON-RPC streaming method name to execute.</param>
     /// <param name="parameters">The JSON parameters for the streaming method call.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <returns>An HTTP result that streams JSON-RPC responses as Server-Sent Events or an error response.</returns>
-    internal static async Task<IResult> StreamResponse(ITaskManager taskManager, string? requestId, string method, JsonElement? parameters)
+    internal static async Task<IResult> StreamResponse(ITaskManager taskManager, string? requestId, string method, JsonElement? parameters, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("StreamResponse", ActivityKind.Server);
         activity?.SetTag("request.id", requestId);
@@ -166,11 +169,11 @@ public static class A2AJsonRpcProcessor
         {
             case A2AMethods.TaskSubscribe:
                 var taskIdParams = DeserializeOrThrow<TaskIdParams>(parameters.Value);
-                var taskEvents = taskManager.SubscribeToTaskAsync(taskIdParams);
+                var taskEvents = taskManager.SubscribeToTaskAsync(taskIdParams, cancellationToken);
                 return new JsonRpcStreamedResult(taskEvents, requestId);
             case A2AMethods.MessageStream:
                 var taskSendParams = DeserializeOrThrow<MessageSendParams>(parameters.Value);
-                var sendEvents = await taskManager.SendMessageStreamAsync(taskSendParams);
+                var sendEvents = await taskManager.SendMessageStreamAsync(taskSendParams, cancellationToken);
                 return new JsonRpcStreamedResult(sendEvents, requestId);
             default:
                 activity?.SetStatus(ActivityStatusCode.Error, "Invalid method");

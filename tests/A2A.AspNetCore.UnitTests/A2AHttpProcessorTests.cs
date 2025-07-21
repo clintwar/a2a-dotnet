@@ -14,7 +14,7 @@ public class A2AHttpProcessorTests
         var logger = NullLogger.Instance;
 
         // Act
-        var result = await A2AHttpProcessor.GetAgentCard(taskManager, logger, "http://example.com");
+        var result = await A2AHttpProcessor.GetAgentCard(taskManager, logger, "http://example.com", CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -34,7 +34,7 @@ public class A2AHttpProcessorTests
         var historyLength = 10;
 
         // Act
-        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null);
+        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -55,7 +55,7 @@ public class A2AHttpProcessorTests
         var id = "testId";
 
         // Act
-        var result = await A2AHttpProcessor.CancelTask(taskManager, logger, id);
+        var result = await A2AHttpProcessor.CancelTask(taskManager, logger, id, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -80,7 +80,7 @@ public class A2AHttpProcessorTests
         };
 
         // Act
-        var result = await A2AHttpProcessor.SendMessage(taskManager, logger, sendParams);
+        var result = await A2AHttpProcessor.SendMessage(taskManager, logger, sendParams, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -103,7 +103,7 @@ public class A2AHttpProcessorTests
         // Arrange
         var mockTaskStore = new Mock<ITaskStore>();
         mockTaskStore
-            .Setup(ts => ts.GetTaskAsync(It.IsAny<string>()))
+            .Setup(ts => ts.GetTaskAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new A2AException("Test exception", errorCode));
 
         var taskManager = new TaskManager(taskStore: mockTaskStore.Object);
@@ -112,7 +112,7 @@ public class A2AHttpProcessorTests
         var historyLength = 10;
 
         // Act
-        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null);
+        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -127,7 +127,7 @@ public class A2AHttpProcessorTests
         // Create an A2AException with an unknown/invalid error code by casting an integer that doesn't correspond to any enum value
         var unknownErrorCode = (A2AErrorCode)(-99999);
         mockTaskStore
-            .Setup(ts => ts.GetTaskAsync(It.IsAny<string>()))
+            .Setup(ts => ts.GetTaskAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new A2AException("Test exception with unknown error code", unknownErrorCode));
 
         var taskManager = new TaskManager(taskStore: mockTaskStore.Object);
@@ -136,7 +136,7 @@ public class A2AHttpProcessorTests
         var historyLength = 10;
 
         // Act
-        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null);
+        var result = await A2AHttpProcessor.GetTask(taskManager, logger, id, historyLength, null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
