@@ -26,24 +26,31 @@ public static class A2AMethods
     public const string TaskCancel = "tasks/cancel";
 
     /// <summary>
-    /// Method for resubscribing to task updates.
+    /// Method for subscribing to task updates.
     /// </summary>
-    public const string TaskResubscribe = "tasks/resubscribe";
+    public const string TaskSubscribe = "tasks/subscribe";
 
     /// <summary>
     /// Method for setting push notification configuration.
     /// </summary>
-    public const string TaskPushNotificationConfigSet = "tasks/pushnotificationconfig/set";
+    public const string TaskPushNotificationConfigSet = "tasks/pushNotificationConfig/set";
 
     /// <summary>
     /// Method for getting push notification configuration.
     /// </summary>
-    public const string TaskPushNotificationConfigGet = "tasks/pushnotificationconfig/get";
+    public const string TaskPushNotificationConfigGet = "tasks/pushNotificationConfig/get";
 
     /// <summary>
     /// Determines if a method requires streaming response handling.
     /// </summary>
     /// <param name="method">The method name to check.</param>
     /// <returns>True if the method requires streaming, false otherwise.</returns>
-    public static bool IsStreamingMethod(string method) => method is MessageStream or TaskResubscribe;
+    public static bool IsStreamingMethod(string method) => method is MessageStream or TaskSubscribe;
+
+    /// <summary>
+    /// Determines if a method name is valid for A2A JSON-RPC.
+    /// </summary>
+    /// <param name="method">The method name to validate.</param>
+    /// <returns>True if the method is valid, false otherwise.</returns>
+    public static bool IsValidMethod(string method) => method is MessageSend or MessageStream or TaskGet or TaskCancel or TaskSubscribe or TaskPushNotificationConfigSet or TaskPushNotificationConfigGet;
 }

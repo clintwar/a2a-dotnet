@@ -4,18 +4,20 @@ namespace AgentServer;
 
 public class EchoAgentWithTasks
 {
-    private TaskManager? _taskManager;
+    private ITaskManager? _taskManager;
 
-    public void Attach(TaskManager taskManager)
+    public void Attach(ITaskManager taskManager)
     {
         _taskManager = taskManager;
-        taskManager.OnTaskCreated = ProcessMessage;
-        taskManager.OnTaskUpdated = ProcessMessage;
-        taskManager.OnAgentCardQuery = GetAgentCard;
+        taskManager.OnTaskCreated = ProcessMessageAsync;
+        taskManager.OnTaskUpdated = ProcessMessageAsync;
+        taskManager.OnAgentCardQuery = GetAgentCardAsync;
     }
 
-    private async Task ProcessMessage(AgentTask task)
+    private async Task ProcessMessageAsync(AgentTask task, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         // Process the message
         var messageText = task.History!.Last().Parts.OfType<TextPart>().First().Text;
 
@@ -24,19 +26,24 @@ public class EchoAgentWithTasks
             Parts = [new TextPart() {
                 Text = $"Echo: {messageText}"
             }]
-        });
-        await _taskManager!.UpdateStatusAsync(task.Id, TaskState.Completed, final: true);
+        }, cancellationToken);
+        await _taskManager!.UpdateStatusAsync(task.Id, TaskState.Completed, final: true, cancellationToken: cancellationToken);
     }
 
-    private AgentCard GetAgentCard(string agentUrl)
+    private Task<AgentCard> GetAgentCardAsync(string agentUrl, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<AgentCard>(cancellationToken);
+        }
+
         var capabilities = new AgentCapabilities()
         {
             Streaming = true,
             PushNotifications = false,
         };
 
-        return new AgentCard()
+        return Task.FromResult(new AgentCard()
         {
             Name = "Echo Agent",
             Description = "Agent which will echo every message it receives.",
@@ -46,6 +53,6 @@ public class EchoAgentWithTasks
             DefaultOutputModes = ["text"],
             Capabilities = capabilities,
             Skills = [],
-        };
+        });
     }
 }

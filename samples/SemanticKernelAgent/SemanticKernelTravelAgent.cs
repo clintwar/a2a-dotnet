@@ -25,7 +25,7 @@ public class CurrencyPlugin
     /// Initialize a new instance of the CurrencyPlugin
     /// </summary>
     /// <param name="logger">Logger for the plugin</param>
-    /// <param name="httpClientFactory">HTTP client factory for making API requests</param>
+    /// <param name="httpClient">HTTP client for making API requests</param>
     public CurrencyPlugin(ILogger<CurrencyPlugin> logger, HttpClient httpClient)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -107,8 +107,8 @@ public class SemanticKernelTravelAgent : IDisposable
     /// Initializes a new instance of the SemanticKernelTravelAgent
     /// </summary>
     /// <param name="configuration">Application configuration</param>
-    /// <param name="logger">Logger for the agent</param>
     /// <param name="httpClient">HTTP client</param>
+    /// <param name="logger">Logger for the agent</param>
     public SemanticKernelTravelAgent(
         IConfiguration configuration,
         HttpClient httpClient,
@@ -135,41 +135,46 @@ public class SemanticKernelTravelAgent : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public void Attach(TaskManager taskManager)
+    public void Attach(ITaskManager taskManager)
     {
         _taskManager = taskManager;
-        taskManager.OnTaskCreated = ExecuteAgentTask;
-        taskManager.OnTaskUpdated = ExecuteAgentTask;
-        taskManager.OnAgentCardQuery = GetAgentCard;
+        taskManager.OnTaskCreated = ExecuteAgentTaskAsync;
+        taskManager.OnTaskUpdated = ExecuteAgentTaskAsync;
+        taskManager.OnAgentCardQuery = GetAgentCardAsync;
     }
 
-    public async Task ExecuteAgentTask(AgentTask task)
+    public async Task ExecuteAgentTaskAsync(AgentTask task, CancellationToken cancellationToken)
     {
         if (_taskManager == null)
         {
             throw new InvalidOperationException("TaskManager is not attached.");
         }
 
-        await _taskManager.UpdateStatusAsync(task.Id, TaskState.Working);
+        await _taskManager.UpdateStatusAsync(task.Id, TaskState.Working, cancellationToken: cancellationToken);
 
         // Get message from the user
         var userMessage = task.History!.Last().Parts.First().AsTextPart().Text;
 
         // Get the response from the agent
         var artifact = new Artifact();
-        await foreach (AgentResponseItem<ChatMessageContent> response in _agent.InvokeAsync(userMessage))
+        await foreach (AgentResponseItem<ChatMessageContent> response in _agent.InvokeAsync(userMessage, cancellationToken: cancellationToken))
         {
             var content = response.Message.Content;
             artifact.Parts.Add(new TextPart() { Text = content! });
         }
 
         // Return as artifacts
-        await _taskManager.ReturnArtifactAsync(task.Id, artifact);
-        await _taskManager.UpdateStatusAsync(task.Id, TaskState.Completed);
+        await _taskManager.ReturnArtifactAsync(task.Id, artifact, cancellationToken);
+        await _taskManager.UpdateStatusAsync(task.Id, TaskState.Completed, cancellationToken: cancellationToken);
     }
 
-    public static AgentCard GetAgentCard(string agentUrl)
+    public static Task<AgentCard> GetAgentCardAsync(string agentUrl, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<AgentCard>(cancellationToken);
+        }
+
         var capabilities = new AgentCapabilities()
         {
             Streaming = false,
@@ -189,7 +194,7 @@ public class SemanticKernelTravelAgent : IDisposable
             ],
         };
 
-        return new AgentCard()
+        return Task.FromResult(new AgentCard()
         {
             Name = "SK Travel Agent",
             Description = "Semantic Kernel-based travel agent providing comprehensive trip planning services including currency exchange and personalized activity planning.",
@@ -199,7 +204,7 @@ public class SemanticKernelTravelAgent : IDisposable
             DefaultOutputModes = ["text"],
             Capabilities = capabilities,
             Skills = [skillTripPlanning],
-        };
+        });
     }
 
     #region private
@@ -208,7 +213,7 @@ public class SemanticKernelTravelAgent : IDisposable
     private readonly CurrencyPlugin _currencyPlugin;
     private readonly HttpClient _httpClient;
     private readonly ChatCompletionAgent _agent;
-    private TaskManager? _taskManager;
+    private ITaskManager? _taskManager;
 
     public List<string> SupportedContentTypes { get; } = ["text", "text/plain"];
 
