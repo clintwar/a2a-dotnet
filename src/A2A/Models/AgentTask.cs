@@ -46,19 +46,34 @@ public sealed class AgentTask : A2AResponse
     /// </summary>
     [JsonPropertyName("metadata")]
     public Dictionary<string, JsonElement>? Metadata { get; set; }
+}
 
+/// <summary>
+/// Provides extension methods for <see cref="AgentTask"/>.
+/// </summary>
+public static class AgentTaskExtensions
+{
     /// <summary>
-    /// Trims the <see cref="History"/> collection to the specified length, keeping only the most recent messages.
+    /// Returns a new <see cref="AgentTask"/> with the <see cref="AgentTask.History"/> collection trimmed to the specified length.
     /// </summary>
-    /// <param name="toLength">
-    /// The maximum number of messages to retain in the history. If <c>null</c> or greater than the current count, no trimming occurs.
-    /// </param>
-    public void TrimHistory(int? toLength)
+    /// <param name="task">The <see cref="AgentTask"/> whose history should be trimmed.</param>
+    /// <param name="toLength">The maximum number of messages to retain in the history. If <c>null</c> or greater than the current count, the original task is returned.</param>
+    /// <returns>A new <see cref="AgentTask"/> with the history trimmed, or the original task if no trimming is necessary.</returns>
+    public static AgentTask WithHistoryTrimmedTo(this AgentTask task, int? toLength)
     {
-        // Trim history if historyLength is specified
-        if (toLength is { } historyLength && this.History?.Count > historyLength)
+        if (toLength is not { } len || task.History is not { Count: > 0 } history || history.Count <= len)
         {
-            this.History = [.. this.History.Skip(Math.Max(0, this.History.Count - historyLength))];
+            return task;
         }
+
+        return new AgentTask
+        {
+            Id = task.Id,
+            ContextId = task.ContextId,
+            Status = task.Status,
+            Artifacts = task.Artifacts,
+            Metadata = task.Metadata,
+            History = [.. history.Skip(history.Count - len)],
+        };
     }
 }
