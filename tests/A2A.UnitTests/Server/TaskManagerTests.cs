@@ -42,8 +42,8 @@ public class TaskManagerTests
 
         if (stream)
         {
-            Assert.IsType<Message>(await taskManager.SendMessageStreamAsync(firstMessage).SingleAsync());
-            Assert.IsType<AgentTask>(await taskManager.SendMessageStreamAsync(secondMessage).SingleAsync());
+            Assert.IsType<Message>(await taskManager.SendMessageStreamingAsync(firstMessage).SingleAsync());
+            Assert.IsType<AgentTask>(await taskManager.SendMessageStreamingAsync(secondMessage).SingleAsync());
         }
         else
         {
@@ -200,7 +200,7 @@ public class TaskManagerTests
         };
 
         var taskSendParams = CreateMessageSendParams("Hello, World!");
-        var taskEvents = taskManager.SendMessageStreamAsync(taskSendParams);
+        var taskEvents = taskManager.SendMessageStreamingAsync(taskSendParams);
         var taskCount = 0;
         await foreach (var taskEvent in taskEvents)
         {
@@ -219,7 +219,7 @@ public class TaskManagerTests
         };
 
         var taskSendParams = CreateMessageSendParams("Hello, World!");
-        var taskEvents = taskManager.SendMessageStreamAsync(taskSendParams);
+        var taskEvents = taskManager.SendMessageStreamingAsync(taskSendParams);
 
         var isFirstEvent = true;
         await foreach (var taskEvent in taskEvents)
@@ -361,7 +361,7 @@ public class TaskManagerTests
 
         var processor = Task.Run(async () =>
         {
-            await foreach (var i in sut.SendMessageStreamAsync(sendParams))
+            await foreach (var i in sut.SendMessageStreamingAsync(sendParams))
             {
                 events.Add(i);
                 if (events.Count is 1)
@@ -640,7 +640,7 @@ public class TaskManagerTests
     }
 
     [Fact]
-    public async Task SendMessageStreamAsync_ShouldThrowOperationCanceledException_WhenCancellationTokenIsCanceled()
+    public async Task SendMessageStreamingAsync_ShouldThrowOperationCanceledException_WhenCancellationTokenIsCanceled()
     {
         // Arrange
         var taskManager = new TaskManager();
@@ -650,7 +650,7 @@ public class TaskManagerTests
         await cts.CancelAsync();
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SendMessageStreamAsync(messageSendParams, cts.Token).ToArrayAsync().AsTask());
+        await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SendMessageStreamingAsync(messageSendParams, cts.Token).ToArrayAsync().AsTask());
     }
 
     [Fact]
@@ -742,7 +742,7 @@ public class TaskManagerTests
     }
 
     [Fact]
-    public async Task SendMessageStreamAsync_ShouldThrowA2AException_WhenTaskIdSpecifiedButTaskDoesNotExist()
+    public async Task SendMessageStreamingAsync_ShouldThrowA2AException_WhenTaskIdSpecifiedButTaskDoesNotExist()
     {
         // Arrange
         var taskManager = new TaskManager();
@@ -756,7 +756,7 @@ public class TaskManagerTests
         };
 
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<A2AException>(() => taskManager.SendMessageStreamAsync(messageSendParams).ToArrayAsync().AsTask());
+        var exception = await Assert.ThrowsAsync<A2AException>(() => taskManager.SendMessageStreamingAsync(messageSendParams).ToArrayAsync().AsTask());
         Assert.Equal(A2AErrorCode.TaskNotFound, exception.ErrorCode);
     }
 
@@ -784,7 +784,7 @@ public class TaskManagerTests
     }
 
     [Fact]
-    public async Task SendMessageStreamAsync_ShouldCreateNewTask_WhenNoTaskIdSpecified()
+    public async Task SendMessageStreamingAsync_ShouldCreateNewTask_WhenNoTaskIdSpecified()
     {
         // Arrange
         var taskManager = new TaskManager();
@@ -799,7 +799,7 @@ public class TaskManagerTests
 
         // Act
         var events = new List<A2AEvent>();
-        await foreach (var evt in taskManager.SendMessageStreamAsync(messageSendParams))
+        await foreach (var evt in taskManager.SendMessageStreamingAsync(messageSendParams))
         {
             events.Add(evt);
             break; // Just get the first event (which should be the task)
