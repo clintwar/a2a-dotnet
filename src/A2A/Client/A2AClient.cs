@@ -11,15 +11,23 @@ namespace A2A;
 public sealed class A2AClient : IA2AClient
 {
     internal static readonly HttpClient s_sharedClient = new();
-
     private readonly HttpClient _httpClient;
+    private readonly Uri _baseUri;
 
     /// <summary>
-    /// Initializes a new instance of the A2AClient class.
+    /// Initializes a new instance of <see cref="A2AClient"/>.
     /// </summary>
+    /// <param name="baseUrl">The base url of the agent's hosting service.</param>
     /// <param name="httpClient">The HTTP client to use for requests.</param>
-    public A2AClient(HttpClient? httpClient = null)
+    public A2AClient(Uri baseUrl, HttpClient? httpClient = null)
     {
+        if (baseUrl is null)
+        {
+            throw new ArgumentNullException(nameof(baseUrl), "Base URL cannot be null.");
+        }
+
+        _baseUri = baseUrl;
+
         _httpClient = httpClient ?? s_sharedClient;
     }
 
@@ -69,7 +77,7 @@ public sealed class A2AClient : IA2AClient
             cancellationToken);
 
     /// <inheritdoc />
-    public IAsyncEnumerable<SseItem<A2AEvent>> SendMessageStreamAsync(MessageSendParams taskSendParams, CancellationToken cancellationToken = default) =>
+    public IAsyncEnumerable<SseItem<A2AEvent>> SendMessageStreamingAsync(MessageSendParams taskSendParams, CancellationToken cancellationToken = default) =>
         SendRpcSseRequestAsync(
             taskSendParams ?? throw new ArgumentNullException(nameof(taskSendParams)),
             A2AMethods.MessageStream,
@@ -127,7 +135,7 @@ public sealed class A2AClient : IA2AClient
             "text/event-stream",
             cancellationToken).ConfigureAwait(false);
 
-        var sseParser = SseParser.Create(responseStream, (eventType, data) =>
+        var sseParser = SseParser.Create(responseStream, (_, data) =>
         {
             var reader = new Utf8JsonReader(data);
 
@@ -138,7 +146,12 @@ public sealed class A2AClient : IA2AClient
                 throw new A2AException(error.Message, (A2AErrorCode)error.Code);
             }
 
-            return JsonSerializer.Deserialize(responseObject?.Result, outputTypeInfo) ??
+            if (responseObject?.Result is null)
+            {
+                throw new InvalidOperationException("Failed to deserialize the event: Result is null.");
+            }
+
+            return responseObject.Result.Deserialize(outputTypeInfo) ??
                 throw new InvalidOperationException("Failed to deserialize the event.");
         });
 
@@ -155,7 +168,7 @@ public sealed class A2AClient : IA2AClient
         string expectedContentType,
         CancellationToken cancellationToken)
     {
-        var response = await _httpClient.SendAsync(new(HttpMethod.Post, "")
+        var response = await _httpClient.SendAsync(new(HttpMethod.Post, _baseUri)
         {
             Content = new JsonRpcContent(new JsonRpcRequest()
             {

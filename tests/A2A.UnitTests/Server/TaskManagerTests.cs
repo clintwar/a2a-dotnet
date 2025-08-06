@@ -6,31 +6,12 @@ public class TaskManagerTests
     public async Task SendMessageReturnsAMessage()
     {
         var taskManager = new TaskManager();
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
         string messageReceived = string.Empty;
         taskManager.OnMessageReceived = (messageSendParams, _) =>
         {
             messageReceived = messageSendParams.Message.Parts.OfType<TextPart>().First().Text;
-            return Task.FromResult(new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Goodbye, World!"
-                    }
-                ]
-            });
+            return Task.FromResult<A2AResponse>(CreateMessage("Goodbye, World!"));
         };
         var a2aResponse = await taskManager.SendMessageAsync(taskSendParams) as Message;
         Assert.NotNull(a2aResponse);
@@ -38,22 +19,44 @@ public class TaskManagerTests
         Assert.Equal("Hello, World!", messageReceived);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OnMessageReceivedCanReturnTaskOrMessage(bool stream)
+    {
+        TaskManager taskManager = new();
+        var firstMessage = CreateMessageSendParams("I need something fancy.");
+        var secondMessage = CreateMessageSendParams("I accept the terms.");
+        string messageReceived = string.Empty;
+        taskManager.OnMessageReceived = async (messageSendParams, cancellationToken) =>
+        {
+            messageReceived = messageSendParams.Message.Parts.OfType<TextPart>().First().Text;
+
+            return messageReceived switch
+            {
+                "I need something fancy." => CreateMessage("OK, but it's going to be very expensive."),
+                "I accept the terms." => await taskManager.CreateTaskAsync(cancellationToken: cancellationToken),
+                _ => throw new InvalidOperationException()
+            };
+        };
+
+        if (stream)
+        {
+            Assert.IsType<Message>(await taskManager.SendMessageStreamingAsync(firstMessage).SingleAsync());
+            Assert.IsType<AgentTask>(await taskManager.SendMessageStreamingAsync(secondMessage).SingleAsync());
+        }
+        else
+        {
+            Assert.IsType<Message>(await taskManager.SendMessageAsync(firstMessage));
+            Assert.IsType<AgentTask>(await taskManager.SendMessageAsync(secondMessage));
+        }
+    }
+
     [Fact]
     public async Task CreateAndRetrieveTask()
     {
         var taskManager = new TaskManager();
-        var messageSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
+        var messageSendParams = CreateMessageSendParams("Hello, World!");
         var task = await taskManager.SendMessageAsync(messageSendParams) as AgentTask;
         Assert.NotNull(task);
 
@@ -69,18 +72,7 @@ public class TaskManagerTests
     public async Task CancelTask()
     {
         var taskManager = new TaskManager();
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
         var task = await taskManager.SendMessageAsync(taskSendParams) as AgentTask;
         Assert.NotNull(task);
         Assert.Equal(TaskState.Submitted, task.Status.State);
@@ -92,29 +84,38 @@ public class TaskManagerTests
     }
 
     [Fact]
+    public async Task CancelTask_MoreThanOnce_Fails()
+    {
+        var taskManager = new TaskManager();
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
+        var task = await taskManager.SendMessageAsync(taskSendParams) as AgentTask;
+        Assert.NotNull(task);
+        Assert.Equal(TaskState.Submitted, task.Status.State);
+
+        var cancelledTask = await taskManager.CancelTaskAsync(new TaskIdParams { Id = task.Id });
+        Assert.NotNull(cancelledTask);
+        Assert.Equal(task.Id, cancelledTask.Id);
+        Assert.Equal(TaskState.Canceled, cancelledTask.Status.State);
+
+        await Assert.ThrowsAsync<A2AException>(async () =>
+        {
+            await taskManager.CancelTaskAsync(new TaskIdParams { Id = task.Id });
+        });
+    }
+
+    [Fact]
     public async Task UpdateTask()
     {
         var taskManager = new TaskManager()
         {
             OnTaskUpdated = (task, _) =>
             {
-                task.Status.State = TaskState.Working;
+                task.Status = task.Status with { State = TaskState.Working };
                 return Task.CompletedTask;
             }
         };
 
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
         var task = await taskManager.SendMessageAsync(taskSendParams) as AgentTask;
         Assert.NotNull(task);
         Assert.Equal(TaskState.Submitted, task.Status.State);
@@ -145,32 +146,12 @@ public class TaskManagerTests
     {
         var taskManager = new TaskManager();
 
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
         var task = await taskManager.SendMessageAsync(taskSendParams) as AgentTask;
         Assert.NotNull(task);
         Assert.Equal(TaskState.Submitted, task.Status.State);
 
-        await taskManager.UpdateStatusAsync(task.Id, TaskState.Completed, new Message
-        {
-            Parts = [
-                    new TextPart
-                    {
-                        Text = "Task completed!"
-                    }
-                ]
-        }
-        );
+        await taskManager.UpdateStatusAsync(task.Id, TaskState.Completed, CreateMessage("Task completed!"));
         var completedTask = await taskManager.GetTaskAsync(new TaskQueryParams { Id = task.Id });
         Assert.NotNull(completedTask);
         Assert.Equal(task.Id, completedTask.Id);
@@ -182,18 +163,7 @@ public class TaskManagerTests
     {
         var taskManager = new TaskManager();
 
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Write me a poem"
-                    }
-                ]
-            },
-        };
+        var taskSendParams = CreateMessageSendParams("Write me a poem");
         var task = await taskManager.SendMessageAsync(taskSendParams) as AgentTask;
         Assert.NotNull(task);
         Assert.Equal(TaskState.Submitted, task.Status.State);
@@ -229,19 +199,8 @@ public class TaskManagerTests
             await taskManager.UpdateStatusAsync(task.Id, TaskState.Working, final: true, cancellationToken: ct);
         };
 
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
-        var taskEvents = await taskManager.SendMessageStreamAsync(taskSendParams);
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
+        var taskEvents = taskManager.SendMessageStreamingAsync(taskSendParams);
         var taskCount = 0;
         await foreach (var taskEvent in taskEvents)
         {
@@ -259,19 +218,8 @@ public class TaskManagerTests
             await taskManager.UpdateStatusAsync(task.Id, TaskState.Working, final: true, cancellationToken: ct);
         };
 
-        var taskSendParams = new MessageSendParams
-        {
-            Message = new Message
-            {
-                Parts = [
-                    new TextPart
-                    {
-                        Text = "Hello, World!"
-                    }
-                ]
-            },
-        };
-        var taskEvents = await taskManager.SendMessageStreamAsync(taskSendParams);
+        var taskSendParams = CreateMessageSendParams("Hello, World!");
+        var taskEvents = taskManager.SendMessageStreamingAsync(taskSendParams);
 
         var isFirstEvent = true;
         await foreach (var taskEvent in taskEvents)
@@ -352,7 +300,8 @@ public class TaskManagerTests
         var sut = new TaskManager();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => sut.SetPushNotificationAsync(null!));
+        var ex = await Assert.ThrowsAsync<A2AException>(() => sut.SetPushNotificationAsync(null!));
+        Assert.Equal(A2AErrorCode.InvalidParams, ex.ErrorCode);
     }
 
     [Fact]
@@ -387,7 +336,8 @@ public class TaskManagerTests
         var sut = new TaskManager();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => sut.GetPushNotificationAsync(null!));
+        var ex = await Assert.ThrowsAsync<A2AException>(() => sut.GetPushNotificationAsync(null!));
+        Assert.Equal(A2AErrorCode.InvalidParams, ex.ErrorCode);
     }
 
     [Fact]
@@ -406,12 +356,40 @@ public class TaskManagerTests
             }
         };
 
-        // Register the enumerator for the taskId
-        var enumerator = await sut.SendMessageStreamAsync(sendParams);
+        var events = new List<A2AEvent>();
+        var processorStarted = new TaskCompletionSource();
 
-        // Now, SubscribeToTaskAsync should return the same enumerator instance for the taskId
-        var result = sut.SubscribeToTaskAsync(new TaskIdParams { Id = task.Id });
-        Assert.Same(enumerator, result);
+        var processor = Task.Run(async () =>
+        {
+            await foreach (var i in sut.SendMessageStreamingAsync(sendParams))
+            {
+                events.Add(i);
+                if (events.Count is 1)
+                {
+                    processorStarted.SetResult(); // Signal that processor is running and got the first event
+                }
+
+                if (events.Count is 3) break;
+            }
+        });
+
+        // Wait for processor to start and receive the first event
+        await processorStarted.Task;
+
+        // Now post the updates
+        await sut.UpdateStatusAsync(task.Id, TaskState.Working, new() { Parts = [new TextPart { Text = "second" }] });
+        await sut.UpdateStatusAsync(task.Id, TaskState.Completed, new() { Parts = [new TextPart { Text = "done" }] }, final: true);
+
+        await processor;
+
+        Assert.Equal(3, events.Count);
+
+        var init = Assert.IsType<AgentTask>(events[0]);
+        Assert.Equal("init", init!.History![0].Parts[0].AsTextPart().Text);
+        var t = Assert.IsType<TaskStatusUpdateEvent>(events[1]);
+        Assert.Equal("second", t!.Status.Message!.Parts[0].AsTextPart().Text);
+        t = Assert.IsType<TaskStatusUpdateEvent>(events[2]);
+        Assert.Equal("done", t!.Status.Message!.Parts[0].AsTextPart().Text);
     }
 
     [Fact]
@@ -421,7 +399,8 @@ public class TaskManagerTests
         var sut = new TaskManager();
 
         // Act & Assert
-        Assert.Throws<ArgumentException>(() => sut.SubscribeToTaskAsync(new TaskIdParams { Id = "notfound" }));
+        var ex = Assert.Throws<A2AException>(() => sut.SubscribeToTaskAsync(new TaskIdParams { Id = "notfound" }));
+        Assert.Equal(A2AErrorCode.TaskNotFound, ex.ErrorCode);
     }
 
     [Fact]
@@ -431,7 +410,8 @@ public class TaskManagerTests
         var sut = new TaskManager();
 
         // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => sut.SubscribeToTaskAsync(null!));
+        var ex = Assert.Throws<A2AException>(() => sut.SubscribeToTaskAsync(null!));
+        Assert.Equal(A2AErrorCode.InvalidParams, ex.ErrorCode);
     }
 
     [Fact]
@@ -536,7 +516,7 @@ public class TaskManagerTests
         var taskManager = new TaskManager();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.CreateTaskAsync(cancellationToken: cts.Token));
@@ -550,7 +530,7 @@ public class TaskManagerTests
         var taskIdParams = new TaskIdParams { Id = "test-id" };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.CancelTaskAsync(taskIdParams, cts.Token));
@@ -564,10 +544,85 @@ public class TaskManagerTests
         var taskQueryParams = new TaskQueryParams { Id = "test-id" };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.GetTaskAsync(taskQueryParams, cts.Token));
+    }
+
+    [Fact]
+    public async Task GetTaskAsync_ShouldNotCreateCopiesOfHistory_WhenTrimmed()
+    {
+        // Arrange
+        var taskManager = new TaskManager();
+
+        // Act & Assert
+        var task = await taskManager.SendMessageAsync(new()
+        {
+            Message = { Parts = { new TextPart { Text = "hi" } } }
+        }, default) as AgentTask;
+        Assert.NotNull(task);
+
+        task = await taskManager.SendMessageAsync(new()
+        {
+            Message = {
+                TaskId = task.Id,
+                Parts = { new TextPart { Text = "hi again" } },
+            },
+        }, default) as AgentTask;
+        Assert.NotNull(task);
+
+        var trimmedTask = await taskManager.GetTaskAsync(new() { HistoryLength = 1, Id = task.Id });
+        Assert.NotNull(trimmedTask?.History);
+        Assert.Single(trimmedTask.History);
+
+        Assert.NotNull(task.History);
+        Assert.Same(task.History[1], trimmedTask.History[0]);
+
+        Assert.Equal(task.Status, trimmedTask.Status);
+        Assert.Same(task.Status.Message, trimmedTask.Status.Message);
+        Assert.Same(task.Id, trimmedTask.Id);
+        Assert.Same(task.Metadata, trimmedTask.Metadata);
+        Assert.Same(task.Artifacts, trimmedTask.Artifacts);
+        Assert.Same(task.ContextId, trimmedTask.ContextId);
+
+        var trimmedSentTask = await taskManager.SendMessageAsync(new()
+        {
+            Message = {
+                TaskId = task.Id,
+                Parts = { new TextPart { Text = "hi again 3" } },
+            },
+            Configuration = new()
+            {
+                HistoryLength = 1,
+            },
+        }, default) as AgentTask;
+        Assert.NotNull(trimmedSentTask);
+        Assert.NotNull(trimmedSentTask?.History);
+        Assert.Single(trimmedSentTask.History);
+
+        task = await taskManager.GetTaskAsync(new() { Id = task.Id });
+        Assert.NotNull(task);
+
+        Assert.NotNull(task.History);
+        Assert.Same(task.History[2], trimmedSentTask.History[0]);
+
+        Assert.Equal(task.Status, trimmedSentTask.Status);
+        Assert.Same(task.Status.Message, trimmedSentTask.Status.Message);
+        Assert.Same(task.Id, trimmedSentTask.Id);
+        Assert.Same(task.Metadata, trimmedSentTask.Metadata);
+        Assert.Same(task.Artifacts, trimmedSentTask.Artifacts);
+        Assert.Same(task.ContextId, trimmedSentTask.ContextId);
+
+        var shouldbeSameTask = await taskManager.GetTaskAsync(new() { Id = task.Id });
+        Assert.NotNull(shouldbeSameTask);
+        Assert.Same(task.History, shouldbeSameTask.History);
+        Assert.Equal(task.Status, shouldbeSameTask.Status);
+        Assert.Same(task.Status.Message, shouldbeSameTask.Status.Message);
+        Assert.Same(task.Id, shouldbeSameTask.Id);
+        Assert.Same(task.Metadata, shouldbeSameTask.Metadata);
+        Assert.Same(task.Artifacts, shouldbeSameTask.Artifacts);
+        Assert.Same(task.ContextId, shouldbeSameTask.ContextId);
     }
 
     [Fact]
@@ -578,24 +633,24 @@ public class TaskManagerTests
         var messageSendParams = new MessageSendParams();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SendMessageAsync(messageSendParams, cts.Token));
     }
 
     [Fact]
-    public async Task SendMessageStreamAsync_ShouldThrowOperationCanceledException_WhenCancellationTokenIsCanceled()
+    public async Task SendMessageStreamingAsync_ShouldThrowOperationCanceledException_WhenCancellationTokenIsCanceled()
     {
         // Arrange
         var taskManager = new TaskManager();
         var messageSendParams = new MessageSendParams();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
-        await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SendMessageStreamAsync(messageSendParams, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SendMessageStreamingAsync(messageSendParams, cts.Token).ToArrayAsync().AsTask());
     }
 
     [Fact]
@@ -620,7 +675,7 @@ public class TaskManagerTests
         var pushNotificationConfig = new TaskPushNotificationConfig();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.SetPushNotificationAsync(pushNotificationConfig, cts.Token));
@@ -634,7 +689,7 @@ public class TaskManagerTests
         var notificationConfigParams = new GetTaskPushNotificationConfigParams { Id = "test-id" };
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.GetPushNotificationAsync(notificationConfigParams, cts.Token));
@@ -647,7 +702,7 @@ public class TaskManagerTests
         var taskManager = new TaskManager();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.UpdateStatusAsync("test-id", TaskState.Working, cancellationToken: cts.Token));
@@ -661,9 +716,111 @@ public class TaskManagerTests
         var artifact = new Artifact();
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(() => taskManager.ReturnArtifactAsync("test-id", artifact, cts.Token));
     }
+
+    [Fact]
+    public async Task SendMessageAsync_ShouldThrowA2AException_WhenTaskIdSpecifiedButTaskDoesNotExist()
+    {
+        // Arrange
+        var taskManager = new TaskManager();
+        var messageSendParams = new MessageSendParams
+        {
+            Message = new Message
+            {
+                TaskId = "non-existent-task-id",
+                Parts = [new TextPart { Text = "Hello, World!" }]
+            }
+        };
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<A2AException>(() => taskManager.SendMessageAsync(messageSendParams));
+        Assert.Equal(A2AErrorCode.TaskNotFound, exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SendMessageStreamingAsync_ShouldThrowA2AException_WhenTaskIdSpecifiedButTaskDoesNotExist()
+    {
+        // Arrange
+        var taskManager = new TaskManager();
+        var messageSendParams = new MessageSendParams
+        {
+            Message = new Message
+            {
+                TaskId = "non-existent-task-id",
+                Parts = [new TextPart { Text = "Hello, World!" }]
+            }
+        };
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<A2AException>(() => taskManager.SendMessageStreamingAsync(messageSendParams).ToArrayAsync().AsTask());
+        Assert.Equal(A2AErrorCode.TaskNotFound, exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ShouldCreateNewTask_WhenNoTaskIdSpecified()
+    {
+        // Arrange
+        var taskManager = new TaskManager();
+        var messageSendParams = new MessageSendParams
+        {
+            Message = new Message
+            {
+                // No TaskId specified
+                Parts = [new TextPart { Text = "Hello, World!" }]
+            }
+        };
+
+        // Act
+        var result = await taskManager.SendMessageAsync(messageSendParams);
+
+        // Assert
+        var task = Assert.IsType<AgentTask>(result);
+        Assert.NotNull(task.Id);
+        Assert.NotEmpty(task.Id);
+    }
+
+    [Fact]
+    public async Task SendMessageStreamingAsync_ShouldCreateNewTask_WhenNoTaskIdSpecified()
+    {
+        // Arrange
+        var taskManager = new TaskManager();
+        var messageSendParams = new MessageSendParams
+        {
+            Message = new Message
+            {
+                // No TaskId specified
+                Parts = [new TextPart { Text = "Hello, World!" }]
+            }
+        };
+
+        // Act
+        var events = new List<A2AEvent>();
+        await foreach (var evt in taskManager.SendMessageStreamingAsync(messageSendParams))
+        {
+            events.Add(evt);
+            break; // Just get the first event (which should be the task)
+        }
+
+        // Assert
+        Assert.Single(events);
+        var task = Assert.IsType<AgentTask>(events[0]);
+        Assert.NotNull(task.Id);
+        Assert.NotEmpty(task.Id);
+    }
+
+    private static MessageSendParams CreateMessageSendParams(string text)
+        => new MessageSendParams
+        {
+            Message = CreateMessage(text)
+        };
+
+    private static Message CreateMessage(string text)
+        => new Message
+        {
+            Parts = [new TextPart { Text = text }]
+        };
 }

@@ -35,6 +35,7 @@ public static partial class A2AJsonUtilities
 
     // JSON-RPC
     [JsonSerializable(typeof(JsonRpcError))]
+    [JsonSerializable(typeof(JsonRpcId))]
     [JsonSerializable(typeof(JsonRpcRequest))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(Dictionary<string, JsonElement>))]
@@ -48,6 +49,7 @@ public static partial class A2AJsonUtilities
     [JsonSerializable(typeof(MessageSendParams))]
     [JsonSerializable(typeof(TaskIdParams))]
     [JsonSerializable(typeof(TaskPushNotificationConfig))]
+    [JsonSerializable(typeof(List<TaskPushNotificationConfig>))]
     [JsonSerializable(typeof(TaskQueryParams))]
 
     [ExcludeFromCodeCoverage]

@@ -27,6 +27,9 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 
+// Add health endpoint
+app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTimeOffset.UtcNow }));
+
 // Get the agent type from command line arguments
 var agentType = GetAgentTypeFromArgs(args);
 
@@ -39,6 +42,7 @@ switch (agentType.ToLowerInvariant())
         var echoAgent = new EchoAgent();
         echoAgent.Attach(taskManager);
         app.MapA2A(taskManager, "/echo");
+        app.MapWellKnownAgentCard(taskManager, "/echo");
         app.MapHttpA2A(taskManager, "/echo");
         break;
 
@@ -46,6 +50,7 @@ switch (agentType.ToLowerInvariant())
         var echoAgentWithTasks = new EchoAgentWithTasks();
         echoAgentWithTasks.Attach(taskManager);
         app.MapA2A(taskManager, "/echotasks");
+        app.MapWellKnownAgentCard(taskManager, "/echotasks");
         app.MapHttpA2A(taskManager, "/echotasks");
         break;
 
@@ -53,11 +58,18 @@ switch (agentType.ToLowerInvariant())
         var researcherAgent = new ResearcherAgent();
         researcherAgent.Attach(taskManager);
         app.MapA2A(taskManager, "/researcher");
+        app.MapWellKnownAgentCard(taskManager, "/researcher");
+        break;
+
+    case "speccompliance":
+        var specComplianceAgent = new SpecComplianceAgent();
+        specComplianceAgent.Attach(taskManager);
+        app.MapA2A(taskManager, "/speccompliance");
+        app.MapWellKnownAgentCard(taskManager, "/speccompliance");
         break;
 
     default:
         Console.WriteLine($"Unknown agent type: {agentType}");
-        Console.WriteLine("Available agents: echo, echotasks, researcher");
         Environment.Exit(1);
         return;
 }
@@ -76,6 +88,6 @@ static string GetAgentTypeFromArgs(string[] args)
     }
 
     // Default to echo if no agent specified
-    Console.WriteLine("No agent specified. Use --agent or -a parameter to specify agent type (echo, echotasks, researcher). Defaulting to 'echo'.");
+    Console.WriteLine("No agent specified. Use --agent or -a parameter to specify agent type (echo, echotasks, researcher, speccompliance). Defaulting to 'echo'.");
     return "echo";
 }

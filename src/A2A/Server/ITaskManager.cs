@@ -12,9 +12,13 @@ public interface ITaskManager
     /// Gets or sets the handler for when a message is received.
     /// </summary>
     /// <remarks>
-    /// Used when the task is configured to process simple messages without tasks.
+    /// <para>The handler needs to return a <see cref="Message"/> or an <see cref="AgentTask"/>.</para>
+    /// <para>
+    /// For more details about choosing Message or a Task refer to:
+    /// <see href="https://github.com/a2aproject/A2A/blob/main/docs/topics/life-of-a-task.md#agent-message-or-a-task"/>.
+    /// </para>
     /// </remarks>
-    Func<MessageSendParams, CancellationToken, Task<Message>>? OnMessageReceived { get; set; }
+    Func<MessageSendParams, CancellationToken, Task<A2AResponse>>? OnMessageReceived { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for when a task is created.
@@ -96,7 +100,8 @@ public interface ITaskManager
     /// Cancels a task by setting its status to Canceled and invoking the cancellation handler.
     /// </summary>
     /// <remarks>
-    /// Retrieves the task from the store, updates its status, and notifies the cancellation handler.
+    /// <para>Retrieves the task from the store, updates its status, and notifies the cancellation handler.</para>
+    /// <para>It fails if the task has already been cancelled.</para>
     /// </remarks>
     /// <param name="taskIdParams">Parameters containing the task ID to cancel.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
@@ -136,7 +141,7 @@ public interface ITaskManager
     /// <param name="messageSendParams">The message parameters containing the message content and optional task/context IDs.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <returns>An async enumerable that yields events as they are produced by the agent.</returns>
-    Task<IAsyncEnumerable<A2AEvent>> SendMessageStreamAsync(MessageSendParams messageSendParams, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<A2AEvent> SendMessageStreamingAsync(MessageSendParams messageSendParams, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resubscribes to an existing task's event stream to receive ongoing updates.
